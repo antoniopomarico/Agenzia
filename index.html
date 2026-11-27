@@ -148,9 +148,9 @@ const schemas={
  opportunita:{title:'Opportunità',fields:[
  ['titolo','Titolo opportunità','text',true],['zona','Zona','text'],['indirizzo','Indirizzo','text'],['civico','Numero civico','text'],['nominativo','Nominativo','text'],['telefono','Telefono','text'],['tipo','Tipo opportunità','select',false,['Vendita','Locazione','Segnalazione','Altro']],['fonte','Fonte','select',false,['Censimento','Contatto diretto','Referenza','Autonoma']],['stato','Stato','select',false,['Nuova','Da ricontattare','In lavorazione','Convertita','Persa']],['dataRichiamo','Data ricontatto','date'],['note','Note','textarea']]}
 };
-let db={censimento:[],acquisizione:[],incarichi:[],appuntamenti:[],opportunita:[],censusOrder:{zones:[],addresses:{}}};
+let db={censimento:[],acquisizione:[],incarichi:[],appuntamenti:[],opportunita:[],censusZones:[],censusAddresses:{},censusOrder:{zones:[],addresses:{}}};
 let current='dashboard',editing=null,searchTerm='';
-const load=()=>{try{const x=JSON.parse(localStorage.getItem('agenziapro_db')||'{}');['censimento','acquisizione','incarichi','appuntamenti','opportunita'].forEach(k=>db[k]=Array.isArray(x[k])?x[k]:[]);db.censusOrder=x.censusOrder&&typeof x.censusOrder==='object'?x.censusOrder:{zones:[],addresses:{}};if(!Array.isArray(db.censusOrder.zones))db.censusOrder.zones=[];if(!db.censusOrder.addresses||typeof db.censusOrder.addresses!=='object')db.censusOrder.addresses={}}catch(e){}};
+const load=()=>{try{const x=JSON.parse(localStorage.getItem('agenziapro_db')||'{}');['censimento','acquisizione','incarichi','appuntamenti','opportunita'].forEach(k=>db[k]=Array.isArray(x[k])?x[k]:[]);db.censusZones=Array.isArray(x.censusZones)?x.censusZones:[];db.censusAddresses=x.censusAddresses&&typeof x.censusAddresses==='object'?x.censusAddresses:{};db.censusOrder=x.censusOrder&&typeof x.censusOrder==='object'?x.censusOrder:{zones:[],addresses:{}};if(!Array.isArray(db.censusOrder.zones))db.censusOrder.zones=[];if(!db.censusOrder.addresses||typeof db.censusOrder.addresses!=='object')db.censusOrder.addresses={}}catch(e){}};
 const save=()=>localStorage.setItem('agenziapro_db',JSON.stringify(db));
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>n!==''&&n!=null&&!isNaN(Number(n))?Number(n).toLocaleString('it-IT',{style:'currency',currency:'EUR',maximumFractionDigits:0}):'—';
@@ -179,9 +179,14 @@ function render(){
  else {
   let type=current,rows=filtered(type);
   const desc={censimento:'Organizza zone, indirizzi e civici. Registra dati catastali e contatti.',acquisizione:'Raccogli le informazioni prima di assumere un incarico.',incarichi:'Schede complete degli immobili affidati all’agenzia.',appuntamenti:'Visite, clienti e relative esigenze di acquisto.',opportunita:'Contatti promettenti da seguire e convertire.'}[type];
-  v.innerHTML=header(schemas[type].title,desc,addButton(type,type==='censimento'?'Aggiungi civico':type==='incarichi'?'Nuovo incarico':'Aggiungi'))+
-  `<div class="toolbar"><input placeholder="Filtra questa sezione..." oninput="sectionFilter(this.value)" value="${esc(searchTerm)}">${type==='censimento'?'':`<select onchange="sortRecords(this.value)"><option value="">Ordine predefinito</option><option value="az">Nome A–Z</option><option value="date">Data più recente</option></select><button class="btn" onclick="toggleView()">Vista ${window.listMode?'schede':'tabella'}</button>`}</div>`+
-  (type==='censimento'?renderCensus(rows):(window.listMode?table(type,rows):`<div class="cards">${rows.length?rows.map(o=>card(type,o)).join(''):`<div class="panel" style="grid-column:1/-1">${table(type,rows)}</div>`}</div>`));
+  if(type==='censimento'){
+   v.innerHTML=header('Censimento','Organizza il territorio: prima le zone, poi gli indirizzi e infine i civici.',`<button class="btn primary" onclick="addCensusZone()">＋ Nuova zona</button>`)+
+   `<div class="toolbar"><input placeholder="Cerca zona, indirizzo o civico..." oninput="sectionFilter(this.value)" value="${esc(searchTerm)}"></div>`+renderCensus(rows);
+  }else{
+   v.innerHTML=header(schemas[type].title,desc,addButton(type,type==='incarichi'?'Nuovo incarico':'Aggiungi'))+
+   `<div class="toolbar"><input placeholder="Filtra questa sezione..." oninput="sectionFilter(this.value)" value="${esc(searchTerm)}"><select onchange="sortRecords(this.value)"><option value="">Ordine predefinito</option><option value="az">Nome A–Z</option><option value="date">Data più recente</option></select><button class="btn" onclick="toggleView()">Vista ${window.listMode?'schede':'tabella'}</button></div>`+
+   (window.listMode?table(type,rows):`<div class="cards">${rows.length?rows.map(o=>card(type,o)).join(''):`<div class="panel" style="grid-column:1/-1">${table(type,rows)}</div>`}</div>`);
+  }
  }
 }
 window.listMode=false;
@@ -216,25 +221,40 @@ function censusMoveButtons(level,zone,address){
  const z=encodeURIComponent(zone||''),a=encodeURIComponent(address||'');
  return `<span class="census-order" onclick="event.stopPropagation()"><button type="button" title="Sposta su" onclick="moveCensusGroup('${level}',decodeURIComponent('${z}'),decodeURIComponent('${a}'),-1)">↑</button><button type="button" title="Sposta giù" onclick="moveCensusGroup('${level}',decodeURIComponent('${z}'),decodeURIComponent('${a}'),1)">↓</button></span>`;
 }
+function addCensusZone(){
+ const name=prompt('Nome della nuova zona (es. Catanzaro Lido):');if(!name||!name.trim())return;
+ const z=name.trim();if((db.censusZones||[]).some(x=>x.toLowerCase()===z.toLowerCase())){alert('Questa zona esiste già.');return}
+ db.censusZones=db.censusZones||[];db.censusZones.push(z);db.censusAddresses=db.censusAddresses||{};db.censusAddresses[z]=[];save();render();
+}
+function addCensusAddress(zone){
+ const name=prompt('Nome dell’indirizzo (es. Via del Mare):');if(!name||!name.trim())return;
+ const a=name.trim();db.censusAddresses=db.censusAddresses||{};db.censusAddresses[zone]=db.censusAddresses[zone]||[];
+ if(db.censusAddresses[zone].some(x=>x.toLowerCase()===a.toLowerCase())){alert('Questo indirizzo esiste già nella zona.');return}
+ db.censusAddresses[zone].push(a);save();render();
+}
+function addCensusCivic(zone,address){
+ openForm('censimento');document.getElementById('modalTitle').textContent='Nuovo civico · '+address;
+ document.getElementById('f_zona').value=zone;document.getElementById('f_indirizzo').value=address;
+}
 function renderCensus(rows){
- if(!rows.length)return `<div class="census-empty"><b>Nessun civico censito</b><p>Inizia aggiungendo un civico: verrà organizzato automaticamente nella sua zona e nel suo indirizzo.</p><button class="btn primary" onclick="openForm('censimento')">＋ Aggiungi il primo civico</button></div>`;
  const clean=v=>String(v||'').trim()||'Non specificata';
- const zones=new Map();
- rows.forEach(o=>{const z=clean(o.zona),a=clean(o.indirizzo),c=clean(o.civico);if(!zones.has(z))zones.set(z,new Map());const addresses=zones.get(z);if(!addresses.has(a))addresses.set(a,[]);addresses.get(a).push({...o,_civic:c});});
- const zoneNames=censusOrdered([...zones.keys()],db.censusOrder.zones);
- const addressCount=[...zones.values()].reduce((n,m)=>n+m.size,0);
- const counts=`<div class="census-summary"><div class="census-count"><strong>${zoneNames.length}</strong><span>Zone</span></div><div class="census-count"><strong>${addressCount}</strong><span>Indirizzi</span></div><div class="census-count"><strong>${rows.length}</strong><span>Civici censiti</span></div></div>`;
- const groups=zoneNames.map((z,zi)=>{
-  const addresses=zones.get(z),total=[...addresses.values()].reduce((n,a)=>n+a.length,0);
-  const firstZoneRecord=[...addresses.values()].flat().find(o=>o.fotoZona);
-  const addressNames=censusOrdered([...addresses.keys()],db.censusOrder.addresses[z]);
-  const addressHtml=addressNames.map(a=>{
-   const civics=addresses.get(a).sort((x,y)=>x._civic.localeCompare(y._civic,'it',{numeric:true}));
-   return `<details class="census-address"><summary><span class="census-address-title"><span>⌖ ${esc(a)}</span>${censusMoveButtons('address',z,a)}</span><span class="pill">${civics.length} ${civics.length===1?'civico':'civici'}</span></summary><div class="census-address-body">${civics.map(o=>`<article class="census-civic"><div style="display:flex;gap:10px;align-items:center"><div class="thumb" style="width:66px;height:56px;flex:0 0 66px;border-radius:7px">${thumb(o)}</div><div style="min-width:0"><h4>Civico ${esc(o._civic)}</h4><div class="muted">${esc(o.tipoUnita||'Tipo non specificato')}</div></div></div><div class="muted" style="margin-top:9px">${o.foglio?`Fg. ${esc(o.foglio)} `:''}${o.particella?`· Part. ${esc(o.particella)} `:''}${o.subalterno?`· Sub. ${esc(o.subalterno)}`:''}</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${o.esito?pill(o.esito):''}${o.intenzione?pill(o.intenzione):''}</div><div class="muted" style="margin-top:7px">${esc(o.nominativi||'Nominativi non inseriti')}</div><div class="itemactions"><button class="btn small" onclick="openForm('censimento','${o.id}')">Apri / modifica</button><button class="btn small danger" onclick="removeRecord('censimento','${o.id}')">Elimina</button></div></article>`).join('')}</div></details>`;
+ const zoneSet=new Set([...(db.censusZones||[]),...rows.map(o=>clean(o.zona))]);
+ const groups=[...zoneSet].filter(z=>!searchTerm||z.toLowerCase().includes(searchTerm)||rows.some(o=>(clean(o.zona)===z)&&Object.values(o).some(v=>String(v??'').toLowerCase().includes(searchTerm)))).sort((a,b)=>a.localeCompare(b,'it'));
+ const addressTotal=new Set();groups.forEach(z=>{(db.censusAddresses?.[z]||[]).forEach(a=>addressTotal.add(z+'|'+a));rows.filter(o=>clean(o.zona)===z).forEach(o=>addressTotal.add(z+'|'+clean(o.indirizzo)))});
+ const counts=`<div class="census-summary"><div class="census-count"><strong>${zoneSet.size}</strong><span>Zone</span></div><div class="census-count"><strong>${addressTotal.size}</strong><span>Indirizzi</span></div><div class="census-count"><strong>${rows.length}</strong><span>Civici censiti</span></div></div>`;
+ if(!groups.length)return counts+`<div class="census-empty"><b>Nessuna zona creata</b><p>Inizia con “Nuova zona”. Poi potrai aggiungere gli indirizzi e, dentro ogni indirizzo, i civici.</p><button class="btn primary" onclick="addCensusZone()">＋ Nuova zona</button></div>`;
+ const html=groups.map((z,zi)=>{
+  const zoneRows=rows.filter(o=>clean(o.zona)===z),addressSet=new Set([...(db.censusAddresses?.[z]||[]),...zoneRows.map(o=>clean(o.indirizzo))]);
+  const addresses=[...addressSet].sort((a,b)=>a.localeCompare(b,'it'));
+  const total=zoneRows.length;
+  const addressHtml=addresses.map(a=>{
+   const civics=zoneRows.filter(o=>clean(o.indirizzo)===a).sort((x,y)=>String(x.civico||'').localeCompare(String(y.civico||''),'it',{numeric:true}));
+   const cards=civics.map(o=>`<article class="census-civic"><div style="display:flex;gap:10px;align-items:center"><div class="thumb" style="width:58px;height:52px;flex:0 0 58px;border-radius:7px">${thumb(o)}</div><div style="min-width:0"><h4>Civico ${esc(o.civico||'—')}</h4><div class="muted">${esc(o.tipoUnita||'Tipo non specificato')}</div></div></div><div class="muted" style="margin-top:8px">${o.foglio?`Fg. ${esc(o.foglio)} `:''}${o.particella?`· Part. ${esc(o.particella)} `:''}${o.subalterno?`· Sub. ${esc(o.subalterno)}`:''}</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${o.esito?pill(o.esito):''}${o.intenzione?pill(o.intenzione):''}</div><div class="muted" style="margin-top:7px">${esc(o.nominativi||'Nominativi non inseriti')}</div><div class="itemactions"><button class="btn small" onclick="openForm('censimento','${o.id}')">Apri / modifica</button><button class="btn small danger" onclick="removeRecord('censimento','${o.id}')">Elimina</button></div></article>`).join('');
+   return `<details class="census-address"><summary><span class="census-address-title">⌖ ${esc(a)}</span><span class="pill">${civics.length} ${civics.length===1?'civico':'civici'}</span></summary><div class="census-address-body">${cards||'<p class="muted">Nessun civico inserito in questo indirizzo.</p>'}<div class="field full"><button class="btn gold" onclick="addCensusCivic('${esc(z).replace(/'/g,"\\'")}','${esc(a).replace(/'/g,"\\'")}')">＋ Aggiungi civico</button></div></div></details>`;
   }).join('');
-  return `<details class="census-zone" ${zi===0?'open':''}><summary><span class="census-zone-head">${firstZoneRecord?`<img class="census-zone-photo" src="${firstZoneRecord.fotoZona}" alt="">`:`<span class="census-zone-photo" style="display:grid;place-items:center;background:#ffffff18">⌖</span>`}<span class="census-zone-title">▦ ${esc(z)}</span></span><span class="census-zone-tools"><span class="pill">${addresses.size} ${addresses.size===1?'indirizzo':'indirizzi'} · ${total} civici</span>${censusMoveButtons('zone',z,'')}</span></summary><div class="census-zone-body">${addressHtml}<p class="census-photo-note">Per aggiungere o cambiare la foto della zona, modifica un civico e carica una “Foto della zona”.</p></div></details>`;
+  return `<details class="census-zone" ${zi===0?'open':''}><summary><span class="census-zone-title">▦ ${esc(z)}</span><span class="census-zone-tools"><span class="pill">${addresses.length} ${addresses.length===1?'indirizzo':'indirizzi'} · ${total} civici</span></span></summary><div class="census-zone-body">${addressHtml}<button class="btn gold" onclick="addCensusAddress('${esc(z).replace(/'/g,"\\'")}')">＋ Aggiungi indirizzo</button></div></details>`;
  }).join('');
- return counts+groups;
+ return counts+html;
 }
 function sectionFilter(v){searchTerm=v.toLowerCase();render()}
 function sortRecords(v){let a=db[current];if(v==='az')a.sort((x,y)=>String(x.immobile||x.titolo||x.zona||'').localeCompare(String(y.immobile||y.titolo||y.zona||''),'it'));if(v==='date')a.sort((x,y)=>String(y.data||y.created||'').localeCompare(String(x.data||x.created||'')));save();render()}
@@ -279,7 +299,7 @@ document.getElementById('recordForm').addEventListener('submit',async e=>{
 function fileToData(file){return new Promise((res,rej)=>{let r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file)})}
 function removeRecord(type,id){if(!confirm('Vuoi eliminare definitivamente questo elemento?'))return;db[type]=db[type].filter(x=>x.id!==id);save();render()}
 function exportData(){let blob=new Blob([JSON.stringify(db,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='AgenziaPro-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(a.href)}
-function importData(file){let r=new FileReader();r.onload=()=>{try{let d=JSON.parse(r.result);['censimento','acquisizione','incarichi','appuntamenti','opportunita'].forEach(k=>db[k]=Array.isArray(d[k])?d[k]:[]);db.censusOrder=d.censusOrder&&typeof d.censusOrder==='object'?d.censusOrder:{zones:[],addresses:{}};save();render();alert('Backup ripristinato.')}catch(e){alert('File backup non valido.')}};r.readAsText(file)}
+function importData(file){let r=new FileReader();r.onload=()=>{try{let d=JSON.parse(r.result);['censimento','acquisizione','incarichi','appuntamenti','opportunita'].forEach(k=>db[k]=Array.isArray(d[k])?d[k]:[]);db.censusZones=Array.isArray(d.censusZones)?d.censusZones:[];db.censusAddresses=d.censusAddresses&&typeof d.censusAddresses==='object'?d.censusAddresses:{};db.censusOrder=d.censusOrder&&typeof d.censusOrder==='object'?d.censusOrder:{zones:[],addresses:{}};save();render();alert('Backup ripristinato.')}catch(e){alert('File backup non valido.')}};r.readAsText(file)}
 document.getElementById('globalSearch').addEventListener('input',e=>{searchTerm=e.target.value.toLowerCase();if(current==='dashboard'){let matches=Object.entries(db).flatMap(([k,a])=>a.filter(o=>Object.values(o).some(x=>String(x??'').toLowerCase().includes(searchTerm))).map(o=>({type:k,o})));let v=document.getElementById('view');if(searchTerm)v.innerHTML=header('Risultati ricerca',`${matches.length} risultati trovati.`)+`<div class="cards">${matches.map(x=>card(x.type,x.o)).join('')||'<div class="empty">Nessun risultato.</div>'}</div>`}else render()});
 document.addEventListener('click',e=>{let b=e.target.closest('[data-go]');if(b){searchTerm='';document.getElementById('globalSearch').value='';go(b.dataset.go)}});
 document.getElementById('today').textContent=new Date().toLocaleDateString('it-IT',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});
